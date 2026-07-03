@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#f4f1e9"/>
+  <!-- 古钱币：外圆 + 方孔（天圆地方） -->
+  <g fill="none" stroke="#5f7a6f" stroke-linejoin="round">
+    <circle cx="256" cy="256" r="150" stroke-width="20"/>
+    <circle cx="256" cy="256" r="176" stroke-width="4" opacity="0.5"/>
+    <rect x="214" y="214" width="84" height="84" rx="12" stroke-width="20"/>
+  </g>
+  <!-- 一点朱砂，取“泉”流通之意 -->
+  <circle cx="256" cy="256" r="10" fill="#b1584e"/>
+</svg>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>泉簿 · 生成图标 PNG</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC",sans-serif;background:#f4f1e9;color:#2f2e2a;max-width:640px;margin:0 auto;padding:24px;line-height:1.7;}
+  h1{font-size:20px;}
+  .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:18px 0;}
+  canvas{border:1px solid rgba(0,0,0,.1);border-radius:16px;background:#fff;}
+  a.btn{display:inline-block;background:#5f7a6f;color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;font-size:14px;}
+  p{font-size:14px;color:#7a756a;}
+  code{background:#ece7da;padding:2px 6px;border-radius:6px;}
+</style>
+</head>
+<body>
+<h1>泉簿 · 图标 PNG 生成器</h1>
+<p>iOS 主屏图标需要 PNG。用手机或电脑浏览器打开本页，点下面的按钮把三张 PNG 下载到 <code>icons/</code> 目录即可（文件名别改）。Android/桌面 Chrome 用 SVG 就够了，可跳过。</p>
+<div id="out"></div>
+
+<script>
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#f4f1e9"/>
+  <g fill="none" stroke="#5f7a6f" stroke-linejoin="round">
+    <circle cx="256" cy="256" r="150" stroke-width="20"/>
+    <circle cx="256" cy="256" r="176" stroke-width="4" opacity="0.5"/>
+    <rect x="214" y="214" width="84" height="84" rx="12" stroke-width="20"/>
+  </g>
+  <circle cx="256" cy="256" r="10" fill="#b1584e"/>
+</svg>`;
+
+// maskable：无圆角、背景铺满、图形缩到中心 80% 安全区
+const SVG_MASK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#f4f1e9"/>
+  <g transform="translate(51.2,51.2) scale(0.8)" fill="none" stroke="#5f7a6f" stroke-linejoin="round">
+    <circle cx="256" cy="256" r="150" stroke-width="20"/>
+    <circle cx="256" cy="256" r="176" stroke-width="4" opacity="0.5"/>
+    <rect x="214" y="214" width="84" height="84" rx="12" stroke-width="20"/>
+  </g>
+  <circle cx="256" cy="256" r="8" fill="#b1584e"/>
+</svg>`;
+
+const targets = [
+  { name:'icon-192.png',      size:192, svg:SVG },
+  { name:'icon-512.png',      size:512, svg:SVG },
+  { name:'icon-maskable.png', size:512, svg:SVG_MASK },
+];
+
+const out = document.getElementById('out');
+targets.forEach(t => {
+  const wrap = document.createElement('div');
+  wrap.className = 'row';
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = t.size;
+  const img = new Image();
+  img.onload = () => {
+    cv.getContext('2d').drawImage(img, 0, 0, t.size, t.size);
+    const a = document.createElement('a');
+    a.className = 'btn';
+    a.textContent = '下载 ' + t.name;
+    a.href = cv.toDataURL('image/png');
+    a.download = t.name;
+    wrap.appendChild(cv);
+    wrap.appendChild(a);
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t.svg);
+  out.appendChild(wrap);
+});
+</script>
+</body>
+</html>

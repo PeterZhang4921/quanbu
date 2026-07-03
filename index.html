@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f1e9" />
+  <title>泉簿</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="泉簿" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="app">
+
+    <!-- ===== 记一笔 ===== -->
+    <section class="view view--entry active" id="view-entry">
+      <div class="type-toggle" id="type-toggle">
+        <button class="type-btn active" data-type="expense">支出</button>
+        <button class="type-btn" data-type="income">收入</button>
+      </div>
+
+      <div class="amount-display">
+        <span class="amount-sign" id="amount-sign">¥</span>
+        <span class="amount-value" id="amount-value">0</span>
+      </div>
+
+      <input class="note-input" id="note-input" type="text" maxlength="40"
+             placeholder="点此加备注（可选）" autocomplete="off" />
+
+      <div class="cats" id="cats"></div>
+
+      <div class="keypad" id="keypad">
+        <button class="key" data-k="1">1</button>
+        <button class="key" data-k="2">2</button>
+        <button class="key" data-k="3">3</button>
+        <button class="key" data-k="4">4</button>
+        <button class="key" data-k="5">5</button>
+        <button class="key" data-k="6">6</button>
+        <button class="key" data-k="7">7</button>
+        <button class="key" data-k="8">8</button>
+        <button class="key" data-k="9">9</button>
+        <button class="key" data-k=".">.</button>
+        <button class="key" data-k="0">0</button>
+        <button class="key key--del" data-k="del">⌫</button>
+      </div>
+    </section>
+
+    <!-- ===== 明细 ===== -->
+    <section class="view view--list" id="view-list">
+      <header class="view-head">
+        <div class="month-stat">
+          <span class="month-stat__label">本月支出</span>
+          <span class="month-stat__value" id="list-month-expense">¥0</span>
+        </div>
+        <button class="ghost-btn" id="backup-btn">备份</button>
+      </header>
+
+      <div class="search">
+        <div class="search-box">
+          <span class="search-ico">🔍</span>
+          <input type="search" id="search-input" placeholder="搜金额 / 日期 / 备注" autocomplete="off" />
+          <button class="search-clear" id="search-clear" hidden aria-label="清空">✕</button>
+        </div>
+        <div class="search-cats" id="search-cats" hidden></div>
+      </div>
+
+      <div class="search-summary" id="search-summary" hidden></div>
+      <div class="list-body" id="list-body"></div>
+    </section>
+
+    <!-- ===== 统计 ===== -->
+    <section class="view view--stats" id="view-stats">
+      <header class="view-head view-head--center">
+        <button class="month-nav" id="month-prev" aria-label="上个月">‹</button>
+        <span class="month-cur" id="month-cur">2026-07</span>
+        <button class="month-nav" id="month-next" aria-label="下个月">›</button>
+      </header>
+
+      <div class="compare">
+        <div class="cmp-row">
+          <div class="cmp-head">
+            <span class="cmp-label"><span class="cmp-dot cmp-dot--income"></span>收入</span>
+            <span class="cmp-amt cmp-amt--income" id="stat-income">¥0</span>
+          </div>
+          <div class="cmp-bar"><span class="cmp-fill cmp-fill--income" id="bar-income"></span></div>
+        </div>
+        <div class="cmp-row">
+          <div class="cmp-head">
+            <span class="cmp-label"><span class="cmp-dot cmp-dot--expense"></span>支出</span>
+            <span class="cmp-amt cmp-amt--expense" id="stat-expense">¥0</span>
+          </div>
+          <div class="cmp-bar"><span class="cmp-fill cmp-fill--expense" id="bar-expense"></span></div>
+        </div>
+        <div class="cmp-balance">
+          <span>本月结余</span>
+          <span class="cmp-balance__value" id="stat-balance">¥0</span>
+        </div>
+      </div>
+
+      <div class="rank-wrap" id="rank-wrap">
+        <div class="rank-title">支出分类排行</div>
+        <div class="rank-list" id="rank-list"></div>
+      </div>
+      <p class="stats-empty" id="stats-empty" hidden>本月还没有支出记录</p>
+    </section>
+
+    <!-- ===== 底部导航 ===== -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab active" data-view="entry">
+        <span class="tab__ico">＋</span><span class="tab__txt">记一笔</span>
+      </button>
+      <button class="tab" data-view="list">
+        <span class="tab__ico">☰</span><span class="tab__txt">明细</span>
+      </button>
+      <button class="tab" data-view="stats">
+        <span class="tab__ico">◔</span><span class="tab__txt">统计</span>
+      </button>
+    </nav>
+  </main>
+
+  <!-- 编辑弹层 -->
+  <div class="modal" id="edit-modal" hidden>
+    <div class="modal__mask" data-close></div>
+    <div class="modal__panel">
+      <h3 class="modal__title">编辑记录</h3>
+      <label class="field">
+        <span>金额</span>
+        <input type="number" inputmode="decimal" id="edit-amount" step="0.01" />
+      </label>
+      <label class="field">
+        <span>分类</span>
+        <select id="edit-category"></select>
+      </label>
+      <label class="field">
+        <span>日期</span>
+        <input type="date" id="edit-date" />
+      </label>
+      <label class="field">
+        <span>备注</span>
+        <input type="text" id="edit-note" maxlength="40" placeholder="可留空" />
+      </label>
+      <div class="modal__actions">
+        <button class="btn btn--danger" id="edit-delete">删除</button>
+        <div class="modal__actions-right">
+          <button class="btn btn--ghost" data-close>取消</button>
+          <button class="btn btn--primary" id="edit-save">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备份弹层 -->
+  <div class="modal" id="backup-modal" hidden>
+    <div class="modal__mask" data-close></div>
+    <div class="modal__panel">
+      <h3 class="modal__title">数据备份</h3>
+      <p class="modal__desc">泉簿数据只存在这台手机里。换手机或清缓存前，请导出备份。</p>
+      <div class="modal__stack">
+        <button class="btn btn--primary" id="export-btn">导出备份（下载文件）</button>
+        <button class="btn btn--ghost" id="import-btn">从备份文件恢复</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+      </div>
+      <div class="modal__actions">
+        <div class="modal__actions-right">
+          <button class="btn btn--ghost" data-close>关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
