@@ -1,0 +1,6 @@
+name = "quanbu"
+compatibility_date = "2026-07-03"
+
+# 纯静态站点：把整个仓库作为静态资源发布，无需构建、无需 Worker 脚本
+[assets]
+directory = "./"
