@@ -22,8 +22,14 @@ const DB = (() => {
           db.createObjectStore(PROJ, { keyPath: 'id' });
         }
       };
-      req.onsuccess = () => { _db = req.result; resolve(_db); };
+      req.onsuccess = () => {
+        _db = req.result;
+        // 有新版本要升级数据库时，主动让出连接，避免把新页面“卡住”
+        _db.onversionchange = () => { try { _db.close(); } catch (e) {} _db = null; };
+        resolve(_db);
+      };
       req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error('数据库被其它已打开的页面占用，请关闭全部泉簿页面后重试'));
     });
   }
 

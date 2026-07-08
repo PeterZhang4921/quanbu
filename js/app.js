@@ -391,7 +391,12 @@
   async function createProject() {
     const name = $('#proj-name').value.trim() || defaultProjectName();
     const p = { id: uid(), name, startedAt: new Date().toISOString(), endedAt: null, status: 'active' };
-    await DB.addProject(p);
+    try {
+      await DB.addProject(p);
+    } catch (e) {
+      toast('创建失败：' + (e && e.message ? e.message : e));
+      return;
+    }
     projects.push(p);
     activeProjectId = p.id; saveActive();
     hide('#projects-modal');
