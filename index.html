@@ -18,6 +18,15 @@
 
     <!-- ===== 记一笔 ===== -->
     <section class="view view--entry active" id="view-entry">
+      <div class="entry-head">
+        <button class="proj-btn" id="proj-btn" aria-label="项目 / 出差记账">💼</button>
+        <button class="proj-banner" id="proj-banner" hidden>
+          <span class="proj-banner__dot"></span>
+          <span class="proj-banner__name" id="proj-banner-name">项目</span>
+          <span class="proj-banner__amt" id="proj-banner-amt">¥0</span>
+        </button>
+      </div>
+
       <div class="type-toggle" id="type-toggle">
         <button class="type-btn active" data-type="expense">支出</button>
         <button class="type-btn" data-type="income">收入</button>
@@ -170,6 +179,35 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- 项目面板 -->
+  <div class="modal" id="projects-modal" hidden>
+    <div class="modal__mask" data-close></div>
+    <div class="modal__panel">
+      <h3 class="modal__title">项目 · 出差记账</h3>
+      <p class="modal__desc">开始项目后，这段时间记的账会自动归到项目里，且不计入个人统计。适合出差、活动等报销场景。</p>
+      <div id="proj-active" hidden></div>
+      <button class="btn btn--primary" id="proj-start" style="width:100%">＋ 开始新项目</button>
+      <div class="proj-new" id="proj-new" hidden>
+        <input id="proj-name" type="text" maxlength="24" placeholder="项目名称" autocomplete="off" />
+        <button class="btn btn--primary" id="proj-create">确定</button>
+      </div>
+      <div class="proj-list" id="proj-list"></div>
+      <div class="modal__actions">
+        <div class="modal__actions-right"><button class="btn btn--ghost" data-close>关闭</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 项目详情 -->
+  <div class="proj-detail" id="proj-detail" hidden>
+    <header class="proj-detail__head">
+      <button class="proj-detail__back" id="proj-detail-back" aria-label="返回">‹</button>
+      <span class="proj-detail__title" id="proj-detail-title">项目</span>
+      <span class="proj-detail__spacer"></span>
+    </header>
+    <div class="proj-detail__body" id="proj-detail-body"></div>
   </div>
 
   <div class="toast" id="toast" hidden></div>

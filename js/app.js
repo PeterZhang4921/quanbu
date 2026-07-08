@@ -30,6 +30,9 @@
   let type = 'expense';
   let amountStr = '0';
   let cache = [];                 // 全部账目缓存
+  let projects = [];              // 项目缓存
+  let activeProjectId = null;     // 当前进行中的项目
+  let detailProjectId = null;     // 当前打开的项目详情
   let statMonth = ymNow();        // 统计页当前月份 'YYYY-MM'
   let searchQuery = '';           // 明细搜索关键词
   const selectedCats = new Set(); // 已选大类，元素形如 'expense:food'
@@ -82,9 +85,8 @@
     } else {
       if (amountStr === '0') amountStr = k;
       else {
-        // 限制两位小数
         const dot = amountStr.indexOf('.');
-        if (dot >= 0 && amountStr.length - dot > 2) return;
+        if (dot >= 0 && amountStr.length - dot > 2) return; // 限制两位小数
         if (amountStr.replace('.', '').length >= 9) return; // 防溢出
         amountStr += k;
       }
@@ -105,39 +107,37 @@
       date: todayISO(),
       createdAt: Date.now(),
     };
+    if (activeProjectId) rec.project = activeProjectId;   // 项目进行中：归入项目
     await DB.add(rec);
     cache.unshift(rec);
     amountStr = '0';
     refreshAmount();
     noteEl.value = '';
     noteEl.blur();
-    toast('已记一笔 · ' + catOf(type, catKey).name);
+    toast((activeProjectId ? '已记入项目 · ' : '已记一笔 · ') + catOf(type, catKey).name);
     renderList();
     renderStats();
+    refreshProjectViews();
   }
 
   // ================= 明细 =================
+  // 个人月度统计只算“非项目”的账（项目=报销，分开算）
   function monthSum(t, ym) {
     return cache
-      .filter(r => r.type === t && r.date.slice(0, 7) === ym)
+      .filter(r => r.type === t && r.date.slice(0, 7) === ym && !r.project)
       .reduce((s, r) => s + r.amount, 0);
   }
 
   function isFiltering() { return searchQuery.trim() !== '' || selectedCats.size > 0; }
 
-  // 单条记录是否命中当前筛选（大类 + 关键词）
   function matchesFilter(r) {
     if (selectedCats.size && !selectedCats.has(r.type + ':' + r.category)) return false;
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
     const c = catOf(r.type, r.category);
     const hay = [
-      r.date,                    // 2026-07-03
-      r.date.replace(/-/g, ''),  // 20260703
-      fmtDate(r.date),           // 7月3日 周五
-      String(r.amount),          // 188 / 66.5
-      r.note || '',
-      c.name,
+      r.date, r.date.replace(/-/g, ''), fmtDate(r.date),
+      String(r.amount), r.note || '', c.name,
     ].join(' ').toLowerCase();
     return hay.includes(q);
   }
@@ -149,30 +149,11 @@
       `<div class="chip-group"><span class="chip-group__label">收入</span>${CATS.income.map(c => chip('income', c)).join('')}</div>`;
   }
 
-  function renderList() {
-    $('#list-month-expense').textContent = fmt(monthSum('expense', ymNow()));
-    const body = $('#list-body');
-    const summary = $('#search-summary');
-    const list = cache.filter(matchesFilter);
-
-    if (isFiltering()) {
-      const exp = list.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
-      const inc = list.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
-      summary.hidden = false;
-      summary.textContent = `共 ${list.length} 笔` + (exp ? ` · 支 ${fmt(exp)}` : '') + (inc ? ` · 收 ${fmt(inc)}` : '');
-    } else {
-      summary.hidden = true;
-    }
-
-    if (!list.length) {
-      body.innerHTML = `<p class="empty">${isFiltering() ? '没有匹配的记录' : '还没有记录，去记一笔吧'}</p>`;
-      return;
-    }
-
+  // 按日分组的流水 HTML（明细页 / 项目详情复用）
+  function txListHTML(list) {
     const groups = {};
     for (const r of list) (groups[r.date] ||= []).push(r);
-
-    body.innerHTML = Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(date => {
+    return Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(date => {
       const items = groups[date];
       const exp = items.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
       const inc = items.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0);
@@ -194,6 +175,50 @@
         ${rows}
       </div>`;
     }).join('');
+  }
+
+  // 分类排行条 HTML（统计页 / 项目详情复用）；无数据返回 ''
+  function catRankingHTML(expenseList) {
+    const byCat = {};
+    expenseList.forEach(r => { byCat[r.category] = (byCat[r.category] || 0) + r.amount; });
+    const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) return '';
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    return entries.map(([key, val], i) => {
+      const c = catOf('expense', key);
+      const pctNum = val / total * 100;
+      const pct = pctNum < 10 ? pctNum.toFixed(1) : pctNum.toFixed(0);
+      const color = COLORS[i % COLORS.length];
+      return `<div class="rank-item">
+        <div class="rank-head">
+          <span class="rank-cat">${c.ico} ${c.name}</span>
+          <span class="rank-meta"><span class="rank-pct">${pct}%</span><span class="rank-amt">${fmt(val)}</span></span>
+        </div>
+        <div class="rank-bar"><span class="rank-fill" style="width:${pctNum}%;background:${color}"></span></div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderList() {
+    $('#list-month-expense').textContent = fmt(monthSum('expense', ymNow()));
+    const body = $('#list-body');
+    const summary = $('#search-summary');
+    const list = cache.filter(r => !r.project && matchesFilter(r)); // 个人账，排除项目
+
+    if (isFiltering()) {
+      const exp = list.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+      const inc = list.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
+      summary.hidden = false;
+      summary.textContent = `共 ${list.length} 笔` + (exp ? ` · 支 ${fmt(exp)}` : '') + (inc ? ` · 收 ${fmt(inc)}` : '');
+    } else {
+      summary.hidden = true;
+    }
+
+    if (!list.length) {
+      body.innerHTML = `<p class="empty">${isFiltering() ? '没有匹配的记录' : '还没有记录，去记一笔吧'}</p>`;
+      return;
+    }
+    body.innerHTML = txListHTML(list);
   }
 
   function fmtDate(iso) {
@@ -232,34 +257,17 @@
     balEl.classList.toggle('pos', bal > 0);
     balEl.classList.toggle('neg', bal < 0);
 
-    // 分类占比（支出）
-    const byCat = {};
-    cache.filter(r => r.type === 'expense' && r.date.slice(0, 7) === statMonth)
-      .forEach(r => { byCat[r.category] = (byCat[r.category] || 0) + r.amount; });
-    const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-
+    // 分类占比（个人支出）
+    const monthExp = cache.filter(r => r.type === 'expense' && r.date.slice(0, 7) === statMonth && !r.project);
+    const html = catRankingHTML(monthExp);
     const rankWrap = $('#rank-wrap'), rankList = $('#rank-list'), empty = $('#stats-empty');
-    if (!entries.length) {
+    if (!html) {
       rankList.innerHTML = ''; rankWrap.style.display = 'none'; empty.hidden = false;
       return;
     }
     rankWrap.style.display = 'block';
     empty.hidden = true;
-
-    const total = entries.reduce((s, [, v]) => s + v, 0);
-    rankList.innerHTML = entries.map(([key, val], i) => {
-      const c = catOf('expense', key);
-      const pctNum = val / total * 100;
-      const pct = pctNum < 10 ? pctNum.toFixed(1) : pctNum.toFixed(0);
-      const color = COLORS[i % COLORS.length];
-      return `<div class="rank-item">
-        <div class="rank-head">
-          <span class="rank-cat">${c.ico} ${c.name}</span>
-          <span class="rank-meta"><span class="rank-pct">${pct}%</span><span class="rank-amt">${fmt(val)}</span></span>
-        </div>
-        <div class="rank-bar"><span class="rank-fill" style="width:${pctNum}%;background:${color}"></span></div>
-      </div>`;
-    }).join('');
+    rankList.innerHTML = html;
   }
 
   // ================= 编辑 =================
@@ -288,7 +296,7 @@
     cache.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt - a.createdAt));
     hide('#edit-modal');
     toast('已保存');
-    renderList(); renderStats();
+    renderList(); renderStats(); refreshProjectViews();
   }
   async function deleteEdit() {
     if (!editingId) return;
@@ -296,12 +304,199 @@
     cache = cache.filter(x => x.id !== editingId);
     hide('#edit-modal');
     toast('已删除');
-    renderList(); renderStats();
+    renderList(); renderStats(); refreshProjectViews();
+  }
+
+  // ================= 项目 / 出差记账 =================
+  function saveActive() {
+    if (activeProjectId) localStorage.setItem('quanbu.active', activeProjectId);
+    else localStorage.removeItem('quanbu.active');
+  }
+  function projectExpense(pid) {
+    return cache.filter(r => r.project === pid && r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+  }
+  function projectCount(pid) { return cache.filter(r => r.project === pid).length; }
+
+  // 首页横幅
+  function renderBanner() {
+    const ap = projects.find(p => p.id === activeProjectId);
+    const banner = $('#proj-banner');
+    $('#proj-btn').classList.toggle('on', !!ap);
+    if (ap) {
+      banner.hidden = false;
+      $('#proj-banner-name').textContent = ap.name;
+      $('#proj-banner-amt').textContent = fmt(projectExpense(ap.id));
+    } else {
+      banner.hidden = true;
+    }
+  }
+
+  function refreshProjectViews() {
+    renderBanner();
+    if (!$('#proj-detail').hidden) renderDetail();
+    if (!$('#projects-modal').hidden) renderProjects();
+  }
+
+  // 项目面板
+  function openProjects() { $('#proj-new').hidden = true; renderProjects(); show('#projects-modal'); }
+
+  function renderProjects() {
+    const ap = projects.find(p => p.id === activeProjectId);
+    const activeWrap = $('#proj-active');
+    if (ap) {
+      activeWrap.hidden = false;
+      activeWrap.innerHTML = `<div class="proj-active-card">
+        <div class="pac-top"><span class="pac-badge">进行中</span><span class="pac-name">${escapeHtml(ap.name)}</span></div>
+        <div class="pac-amt">${fmt(projectExpense(ap.id))}</div>
+        <div class="pac-actions">
+          <button class="btn btn--ghost" data-proj-view="${ap.id}">查看明细</button>
+          <button class="btn btn--primary" id="proj-end">结束项目</button>
+        </div>
+      </div>`;
+      $('#proj-start').hidden = true;
+    } else {
+      activeWrap.hidden = true;
+      activeWrap.innerHTML = '';
+      $('#proj-start').hidden = false;
+    }
+
+    const closed = projects.filter(p => p.status === 'closed')
+      .sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || ''));
+    const list = $('#proj-list');
+    if (!closed.length) {
+      list.innerHTML = ap ? '' : '<p class="proj-empty">还没有历史项目</p>';
+    } else {
+      list.innerHTML = `<div class="proj-list-title">历史项目</div>` + closed.map(p => {
+        const range = p.startedAt.slice(0, 10) + ' ~ ' + (p.endedAt ? p.endedAt.slice(0, 10) : '');
+        return `<button class="proj-item" data-proj-view="${p.id}">
+          <div class="proj-item__main"><div class="proj-item__name">${escapeHtml(p.name)}</div>
+            <div class="proj-item__meta">${range} · ${projectCount(p.id)} 笔</div></div>
+          <div class="proj-item__amt">${fmt(projectExpense(p.id))}</div>
+        </button>`;
+      }).join('');
+    }
+  }
+
+  function defaultProjectName() {
+    const d = new Date();
+    return `出差 ${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+  function beginNewProject() {
+    const box = $('#proj-new');
+    box.hidden = false;
+    const inp = $('#proj-name');
+    inp.value = defaultProjectName();
+    inp.focus(); inp.select();
+  }
+  async function createProject() {
+    const name = $('#proj-name').value.trim() || defaultProjectName();
+    const p = { id: uid(), name, startedAt: new Date().toISOString(), endedAt: null, status: 'active' };
+    await DB.addProject(p);
+    projects.push(p);
+    activeProjectId = p.id; saveActive();
+    hide('#projects-modal');
+    renderBanner();
+    toast('已开始项目 · ' + name);
+  }
+  async function endProject() {
+    const ap = projects.find(p => p.id === activeProjectId);
+    if (!ap) return;
+    ap.status = 'closed';
+    ap.endedAt = new Date().toISOString();
+    await DB.putProject(ap);
+    activeProjectId = null; saveActive();
+    toast('项目已结束 · ' + ap.name);
+    refreshProjectViews();
+  }
+
+  // 项目详情
+  function openDetail(pid) { detailProjectId = pid; renderDetail(); $('#proj-detail').hidden = false; }
+
+  function renderDetail() {
+    const p = projects.find(x => x.id === detailProjectId);
+    if (!p) return;
+    const txs = cache.filter(r => r.project === p.id);
+    const exp = txs.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+    const inc = txs.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
+    const active = p.status === 'active';
+    $('#proj-detail-title').textContent = p.name;
+    const range = p.startedAt.slice(0, 10) + (p.endedAt ? ' ~ ' + p.endedAt.slice(0, 10) : ' 起');
+    const rankHTML = catRankingHTML(txs.filter(r => r.type === 'expense'));
+    $('#proj-detail-body').innerHTML = `
+      <div class="pd-summary">
+        <div class="pd-total-label">报销合计（支出）</div>
+        <div class="pd-total">${fmt(exp)}</div>
+        <div class="pd-meta">${range} · ${txs.length} 笔${active ? ' · <b class="pd-live">进行中</b>' : ''}${inc ? ' · 收入 ' + fmt(inc) : ''}</div>
+      </div>
+      <div class="pd-actions">
+        ${active ? '<button class="btn btn--primary" data-proj-end>结束项目</button>' : ''}
+        <button class="btn btn--ghost" data-proj-rename>重命名</button>
+        <button class="btn btn--ghost" data-proj-export>导出</button>
+        <button class="btn btn--danger" data-proj-del>删除</button>
+      </div>
+      ${rankHTML ? `<div class="pd-section-title">分类占比</div><div class="rank-list">${rankHTML}</div>` : ''}
+      <div class="pd-section-title">消费明细</div>
+      <div class="list-body">${txs.length ? txListHTML(txs) : '<p class="empty">这个项目还没有消费</p>'}</div>
+    `;
+  }
+
+  async function renameProject() {
+    const p = projects.find(x => x.id === detailProjectId);
+    if (!p) return;
+    const name = prompt('项目名称', p.name);
+    if (name === null) return;
+    p.name = name.trim() || p.name;
+    await DB.putProject(p);
+    toast('已重命名');
+    refreshProjectViews();
+  }
+  async function deleteProject() {
+    const p = projects.find(x => x.id === detailProjectId);
+    if (!p) return;
+    const n = projectCount(p.id);
+    if (!confirm(`删除项目「${p.name}」？其中 ${n} 笔消费也会一并删除，且无法恢复。`)) return;
+    const toDel = cache.filter(r => r.project === p.id);
+    for (const r of toDel) await DB.remove(r.id);
+    cache = cache.filter(r => r.project !== p.id);
+    await DB.removeProject(p.id);
+    projects = projects.filter(x => x.id !== p.id);
+    if (activeProjectId === p.id) { activeProjectId = null; saveActive(); }
+    hide('#proj-detail');
+    toast('项目已删除');
+    renderBanner(); renderList(); renderStats();
+    if (!$('#projects-modal').hidden) renderProjects();
+  }
+  function exportProject() {
+    const p = projects.find(x => x.id === detailProjectId);
+    if (!p) return;
+    const txs = cache.filter(r => r.project === p.id)
+      .slice().sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt - b.createdAt));
+    const exp = txs.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+    const lines = [
+      `项目,${p.name}`,
+      `起止,${p.startedAt.slice(0, 10)} ~ ${p.endedAt ? p.endedAt.slice(0, 10) : '进行中'}`,
+      `支出合计,${Math.round(exp * 100) / 100}`,
+      '',
+      '日期,类型,分类,金额,备注',
+    ];
+    for (const r of txs) {
+      lines.push([r.date, r.type === 'income' ? '收入' : '支出', catOf(r.type, r.category).name,
+        r.amount, (r.note || '').replace(/[,\n]/g, '，')].join(','));
+    }
+    const csv = '﻿' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `泉簿_${p.name}_${todayISO()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('已导出项目清单');
   }
 
   // ================= 备份 =================
   function exportData() {
-    const payload = { app: 'quanbu', version: 1, exportedAt: new Date().toISOString(), data: cache };
+    const payload = { app: 'quanbu', version: 2, exportedAt: new Date().toISOString(), data: cache, projects };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -318,15 +513,21 @@
         const parsed = JSON.parse(reader.result);
         const records = Array.isArray(parsed) ? parsed : parsed.data;
         if (!Array.isArray(records)) throw new Error('格式不对');
-        // 基本校验
         const clean = records.filter(r => r && r.id && r.type && typeof r.amount === 'number' && r.date);
         if (!clean.length) throw new Error('没有有效记录');
+        const projs = (parsed && Array.isArray(parsed.projects)) ? parsed.projects : [];
         if (!confirm(`将用备份中的 ${clean.length} 条记录替换当前数据，确定？`)) return;
         await DB.replaceAll(clean);
+        // 恢复项目表
+        for (const p of projects) await DB.removeProject(p.id);
+        for (const p of projs) await DB.putProject(p);
         cache = await DB.all();
+        projects = await DB.allProjects();
+        activeProjectId = projects.find(p => p.status === 'active')?.id || null;
+        saveActive();
         hide('#backup-modal');
         toast('已恢复 ' + clean.length + ' 条');
-        renderList(); renderStats();
+        renderBanner(); renderList(); renderStats();
       } catch (e) {
         toast('恢复失败：' + e.message);
       }
@@ -363,7 +564,7 @@
       const tx = e.target.closest('.tx'); if (tx) openEdit(tx.dataset.id);
     });
 
-    // 搜索：点搜索框展开大类多选；输入实时过滤金额/日期/备注
+    // 搜索
     const si = $('#search-input');
     si.addEventListener('focus', () => { $('#search-cats').hidden = false; });
     si.addEventListener('input', () => {
@@ -394,6 +595,26 @@
     $('#import-btn').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; });
 
+    // 项目 / 出差
+    $('#proj-btn').addEventListener('click', openProjects);
+    $('#proj-banner').addEventListener('click', () => { if (activeProjectId) openDetail(activeProjectId); });
+    $('#proj-start').addEventListener('click', beginNewProject);
+    $('#proj-create').addEventListener('click', createProject);
+    $('#proj-name').addEventListener('keydown', e => { if (e.key === 'Enter') createProject(); });
+    $('#projects-modal').addEventListener('click', e => {
+      const v = e.target.closest('[data-proj-view]');
+      if (v) { hide('#projects-modal'); openDetail(v.dataset.projView); return; }
+      if (e.target.id === 'proj-end') endProject();
+    });
+    $('#proj-detail-back').addEventListener('click', () => hide('#proj-detail'));
+    $('#proj-detail-body').addEventListener('click', e => {
+      if (e.target.closest('[data-proj-end]')) return endProject();
+      if (e.target.closest('[data-proj-rename]')) return renameProject();
+      if (e.target.closest('[data-proj-export]')) return exportProject();
+      if (e.target.closest('[data-proj-del]')) return deleteProject();
+      const tx = e.target.closest('.tx'); if (tx) openEdit(tx.dataset.id);
+    });
+
     // 关闭弹层
     $$('[data-close]').forEach(el => el.addEventListener('click', () => {
       el.closest('.modal').hidden = true;
@@ -407,6 +628,11 @@
     renderSearchCats();
     bind();
     cache = await DB.all();
+    projects = await DB.allProjects();
+    activeProjectId = localStorage.getItem('quanbu.active') || null;
+    const ap = projects.find(p => p.id === activeProjectId);
+    if (!ap || ap.status !== 'active') { activeProjectId = null; saveActive(); }
+    renderBanner();
     renderList();
     renderStats();
 
