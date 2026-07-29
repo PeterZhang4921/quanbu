@@ -74,6 +74,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 }
 .cat:active{transform:scale(.94);}
 .cat.selected{border-color:var(--jade);box-shadow:0 0 0 2px rgba(95,122,111,.25);}
+.cat.armed{border-color:var(--jade);background:rgba(95,122,111,.14);box-shadow:0 0 0 2px rgba(95,122,111,.32);}
+.cat.armed .cat__txt{color:var(--jade);}
+.entry-hint{text-align:center;color:var(--jade);font-size:12.5px;margin:12px 0 0;min-height:1.1em;}
 .cat__ico{font-size:24px;line-height:1;}
 .cat__txt{font-size:12px;color:var(--ink-soft);}
 

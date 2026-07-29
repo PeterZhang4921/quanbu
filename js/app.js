@@ -29,6 +29,7 @@
   // ---------- 状态 ----------
   let type = 'expense';
   let amountStr = '0';
+  let armedCat = null;            // 先点分类、待输金额时选中的分类
   let cache = [];                 // 全部账目缓存
   let projects = [];              // 项目缓存
   let activeProjectId = null;     // 当前进行中的项目
@@ -72,6 +73,7 @@
     $('#view-entry').classList.toggle('income-mode', t === 'income');
     $('#amount-sign').style.color = t === 'income' ? 'var(--jade)' : 'var(--ink-soft)';
     renderCats();
+    armedCat = null; updateArmed(); updateHint();
   }
 
   function refreshAmount() { $('#amount-value').textContent = amountStr; }
@@ -92,6 +94,26 @@
       }
     }
     refreshAmount();
+    updateHint();
+  }
+
+  // 点分类：有金额→直接记；无金额→先选中该分类，等输入金额后再点它完成
+  function tapCategory(key) {
+    if (parseFloat(amountStr) > 0) { saveEntry(key); return; }
+    armedCat = (armedCat === key) ? null : key;   // 再点一次可取消
+    updateArmed();
+    updateHint();
+  }
+  function updateArmed() {
+    $$('#cats .cat').forEach(b => b.classList.toggle('armed', b.dataset.cat === armedCat));
+  }
+  function updateHint() {
+    const el = $('#entry-hint');
+    if (!armedCat) { el.textContent = ''; return; }
+    const name = catOf(type, armedCat).name;
+    el.textContent = parseFloat(amountStr) > 0
+      ? `再点「${name}」即记账`
+      : `已选「${name}」· 输入金额后点它记账`;
   }
 
   async function saveEntry(catKey) {
@@ -114,6 +136,7 @@
     refreshAmount();
     noteEl.value = '';
     noteEl.blur();
+    armedCat = null; updateArmed(); updateHint();
     toast((activeProjectId ? '已记入项目 · ' : '已记一笔 · ') + catOf(type, catKey).name);
     renderList();
     renderStats();
@@ -560,7 +583,7 @@
       const b = e.target.closest('.key'); if (b) press(b.dataset.k);
     });
     $('#cats').addEventListener('click', e => {
-      const b = e.target.closest('.cat'); if (b) saveEntry(b.dataset.cat);
+      const b = e.target.closest('.cat'); if (b) tapCategory(b.dataset.cat);
     });
     $('#tabbar').addEventListener('click', e => {
       const b = e.target.closest('.tab'); if (b) switchView(b.dataset.view);

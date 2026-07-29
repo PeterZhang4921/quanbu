@@ -1,7 +1,7 @@
 /* 泉簿 · Service Worker
  * 迭代更新：每次发新版把下面的 VERSION 改一下（如 v2、v3），
  * 部署后浏览器会自动下载新版并在下次打开时生效；用户账目不受影响。 */
-const VERSION = 'quanbu-v3';
+const VERSION = 'quanbu-v4';
 const ASSETS = [
   './',
   './index.html',
